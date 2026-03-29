@@ -1,0 +1,1391 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Smart IoT Dashboard</title>
+
+<!-- Firebase SDK v9 (compat) -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+
+<!-- Chart.js + Date adapter -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+<!-- Font: Prompt — Thai/Latin modern -->
+<link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&family=Sarabun:wght@400;500;600&display=swap" rel="stylesheet">
+
+<style>
+:root {
+  --bg:          #eef2f7;
+  --card:        #ffffff;
+  --nav:         #0f2744;
+  --nav2:        #163561;
+  --primary:     #1e88e5;
+  --primary-l:   #bbdefb;
+  --teal:        #00acc1;
+  --teal-l:      #b2ebf2;
+  --green:       #43a047;
+  --green-l:     #c8e6c9;
+  --amber:       #fb8c00;
+  --amber-l:     #ffe0b2;
+  --red:         #e53935;
+  --red-l:       #ffcdd2;
+  --purple:      #7e57c2;
+  --text:        #1a2f4a;
+  --text2:       #4a6380;
+  --text3:       #8ea6bd;
+  --border:      #dde6f0;
+  --shadow:      0 2px 12px rgba(0,40,80,0.10);
+  --shadow-md:   0 4px 24px rgba(0,40,80,0.13);
+  --radius:      16px;
+  --radius-sm:   10px;
+}
+
+*,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: 'Prompt', 'Sarabun', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  font-size: 15px;
+}
+
+/* ── Navigation Bar ── */
+.navbar {
+  background: linear-gradient(135deg, var(--nav) 0%, var(--nav2) 100%);
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 64px;
+  position: sticky; top:0; z-index:100;
+  box-shadow: 0 2px 16px rgba(0,0,0,0.25);
+}
+
+.brand {
+  display:flex; align-items:center; gap:12px;
+}
+
+.brand-icon {
+  width:40px; height:40px; border-radius:12px;
+  background: linear-gradient(135deg, var(--teal), var(--primary));
+  display:grid; place-items:center; font-size:20px;
+  box-shadow: 0 0 16px rgba(0,172,193,0.5);
+}
+
+.brand-name {
+  font-size:18px; font-weight:700; color:#fff; letter-spacing:0.5px;
+}
+.brand-sub { font-size:11px; color:rgba(255,255,255,0.55); letter-spacing:1px; }
+
+.nav-tabs {
+  display:flex; gap:4px;
+}
+.nav-tab {
+  padding:8px 20px; border-radius:8px; border:none;
+  background:transparent; color:rgba(255,255,255,0.6);
+  font-family:'Prompt',sans-serif; font-size:14px; font-weight:500;
+  cursor:pointer; transition:all 0.2s; display:flex; align-items:center; gap:7px;
+}
+.nav-tab:hover { background:rgba(255,255,255,0.1); color:#fff; }
+.nav-tab.active { background:rgba(255,255,255,0.18); color:#fff; font-weight:600; }
+.nav-tab .tab-icon { font-size:16px; }
+
+.nav-right {
+  display:flex; align-items:center; gap:10px;
+}
+
+.conn-badge {
+  display:flex; align-items:center; gap:7px;
+  padding:6px 14px; border-radius:20px; font-size:12px; font-weight:600;
+  letter-spacing:0.5px;
+}
+.conn-badge.online  { background:rgba(67,160,71,0.25); color:#a5d6a7; }
+.conn-badge.offline { background:rgba(229,57,53,0.25);  color:#ef9a9a; }
+.conn-badge.linking { background:rgba(251,140,0,0.25);  color:#ffcc80; }
+
+.conn-dot {
+  width:8px; height:8px; border-radius:50%;
+  background:currentColor;
+}
+.conn-badge.online .conn-dot { animation: dot-pulse 2s ease infinite; box-shadow:0 0 8px currentColor; }
+@keyframes dot-pulse { 50%{opacity:0.3;} }
+
+.clock-badge {
+  padding:6px 12px; background:rgba(255,255,255,0.1);
+  border-radius:8px; color:rgba(255,255,255,0.8); font-size:13px;
+  font-family:monospace; letter-spacing:1px;
+}
+
+.btn-cfg {
+  width:36px; height:36px; border-radius:9px; border:none;
+  background:rgba(255,255,255,0.12); color:rgba(255,255,255,0.8);
+  font-size:18px; cursor:pointer; transition:all 0.2s;
+  display:grid; place-items:center;
+}
+.btn-cfg:hover { background:rgba(255,255,255,0.2); color:#fff; }
+
+/* ── Modal ── */
+.overlay {
+  display:none; position:fixed; inset:0;
+  background:rgba(10,25,50,0.7); z-index:500;
+  place-items:center; backdrop-filter:blur(6px);
+}
+.overlay.show { display:grid; }
+
+.modal {
+  background:var(--card); border-radius:20px;
+  padding:28px 32px; width:min(500px,95vw);
+  box-shadow:0 20px 60px rgba(0,0,0,0.3);
+  animation: modal-in 0.25s cubic-bezier(.34,1.56,.64,1);
+}
+@keyframes modal-in {
+  from { transform:scale(0.92) translateY(-16px); opacity:0; }
+}
+
+.modal-title {
+  font-size:18px; font-weight:700; color:var(--text);
+  margin-bottom:20px; display:flex; align-items:center; gap:9px;
+}
+.modal-title span { width:32px;height:32px; border-radius:9px;
+  background:var(--primary-l); display:grid; place-items:center; font-size:16px; }
+
+.form-group { margin-bottom:14px; }
+.form-group label { display:block; font-size:12px; font-weight:600; color:var(--text2);
+  letter-spacing:0.5px; margin-bottom:5px; }
+.form-group input {
+  width:100%; padding:10px 14px; border-radius:10px;
+  border:1.5px solid var(--border); background:var(--bg);
+  font-family:'Prompt',sans-serif; font-size:13px; color:var(--text);
+  outline:none; transition:border-color 0.2s;
+}
+.form-group input:focus { border-color:var(--primary); }
+.form-group .hint { font-size:11px; color:var(--text3); margin-top:4px; }
+
+.modal-sep { height:1px; background:var(--border); margin:18px 0; }
+
+.modal-btns { display:flex; gap:10px; margin-top:20px; }
+.btn { flex:1; padding:11px; border-radius:10px; border:none;
+  font-family:'Prompt',sans-serif; font-size:14px; font-weight:600;
+  cursor:pointer; transition:all 0.2s; }
+.btn-primary { background:var(--primary); color:#fff; }
+.btn-primary:hover { background:#1565c0; box-shadow:0 4px 16px rgba(30,136,229,0.4); }
+.btn-outline { background:transparent; border:1.5px solid var(--border); color:var(--text2); }
+.btn-outline:hover { border-color:var(--text2); color:var(--text); }
+
+/* ── Alert Banner ── */
+.alert-banner {
+  display:none; margin:16px 24px 0;
+  padding:12px 18px; border-radius:12px;
+  border:1.5px solid; font-size:13px; font-weight:500;
+  align-items:center; gap:10px;
+}
+.alert-banner.show  { display:flex; }
+.alert-banner.warn  { border-color:var(--amber); color:var(--amber); background:var(--amber-l); }
+.alert-banner.crit  { border-color:var(--red); color:var(--red); background:var(--red-l);
+                       animation: crit-pulse 1s ease infinite; }
+@keyframes crit-pulse { 50%{box-shadow:0 0 16px rgba(229,57,53,0.3);} }
+
+/* ── Page Views ── */
+.view { display:none; padding:20px 24px 32px; animation: fadein 0.25s ease; }
+.view.active { display:block; }
+@keyframes fadein { from{opacity:0; transform:translateY(8px);} }
+
+/* ── Cards ── */
+.card {
+  background:var(--card); border-radius:var(--radius);
+  box-shadow:var(--shadow); overflow:hidden;
+}
+.card-hdr {
+  padding:14px 20px; display:flex; align-items:center; justify-content:space-between;
+  border-bottom:1px solid var(--border);
+}
+.card-title { font-size:13px; font-weight:600; color:var(--text2); letter-spacing:0.5px;
+  display:flex; align-items:center; gap:7px; }
+.card-title .dot { width:7px; height:7px; border-radius:50%; background:var(--primary); }
+
+/* ── Grid Layouts ── */
+.grid { display:grid; gap:18px; }
+.g3  { grid-template-columns:repeat(3,1fr); }
+.g2  { grid-template-columns:1fr 1fr; }
+.g21 { grid-template-columns:2fr 1fr; }
+.mt { margin-top:18px; }
+
+@media(max-width:900px) { .g3{grid-template-columns:1fr 1fr;} }
+@media(max-width:640px) { .g3,.g2,.g21{grid-template-columns:1fr;} }
+
+/* ── Sensor Gauge Cards ── */
+.gauge-card {
+  background:var(--card); border-radius:var(--radius);
+  box-shadow:var(--shadow); padding:22px 20px;
+  display:flex; flex-direction:column; align-items:center; gap:8px;
+  transition:box-shadow 0.3s;
+  position:relative; overflow:hidden;
+}
+.gauge-card:hover { box-shadow:var(--shadow-md); }
+.gauge-card::before {
+  content:''; position:absolute; top:0; left:0; right:0; height:4px;
+}
+.gauge-card.temp::before  { background:linear-gradient(90deg,#ff8f00,#ffd54f); }
+.gauge-card.hum::before   { background:linear-gradient(90deg,#0288d1,#4fc3f7); }
+.gauge-card.ldr::before   { background:linear-gradient(90deg,#f9a825,#fff176); }
+
+.gauge-label {
+  font-size:12px; font-weight:600; color:var(--text3);
+  letter-spacing:1px; text-transform:uppercase;
+}
+
+.gauge-svg-wrap { position:relative; width:160px; height:90px; }
+.gauge-svg-wrap svg { overflow:visible; }
+
+.gauge-arc-bg { fill:none; stroke:var(--border); stroke-width:12; stroke-linecap:round; }
+.gauge-arc-fill { fill:none; stroke-width:12; stroke-linecap:round;
+  transition:stroke-dashoffset 1.2s cubic-bezier(.4,0,.2,1), stroke 0.5s; }
+
+.gauge-center {
+  position:absolute; bottom:-4px; left:50%; transform:translateX(-50%);
+  text-align:center;
+}
+.gauge-val {
+  font-size:36px; font-weight:700; line-height:1;
+  transition:color 0.5s;
+}
+.gauge-unit { font-size:13px; font-weight:400; color:var(--text3); vertical-align:super; }
+
+.gauge-sub {
+  display:flex; gap:8px; margin-top:4px;
+}
+.gauge-chip {
+  font-size:11px; padding:3px 9px; border-radius:20px;
+  font-weight:600; letter-spacing:0.5px;
+}
+.chip-green  { background:var(--green-l);  color:var(--green); }
+.chip-amber  { background:var(--amber-l);  color:var(--amber); }
+.chip-red    { background:var(--red-l);    color:var(--red); }
+.chip-teal   { background:var(--teal-l);   color:var(--teal); }
+.chip-purple { background:#ede7f6; color:var(--purple); }
+
+/* ── Relay Cards ── */
+.relay-card {
+  background:var(--card); border-radius:var(--radius);
+  box-shadow:var(--shadow); padding:22px 24px;
+  display:flex; flex-direction:column; gap:16px;
+  transition:all 0.3s; cursor:pointer; user-select:none;
+}
+.relay-card:hover { box-shadow:var(--shadow-md); transform:translateY(-2px); }
+.relay-card.on {
+  background:linear-gradient(135deg, #e8f5e9, #f1f8e9);
+  box-shadow:0 4px 20px rgba(67,160,71,0.2);
+  border:1.5px solid var(--green-l);
+}
+
+.relay-top { display:flex; align-items:center; justify-content:space-between; }
+
+.relay-icon-wrap {
+  width:52px; height:52px; border-radius:16px;
+  display:grid; place-items:center; font-size:24px;
+  transition:all 0.3s;
+}
+.relay-card .relay-icon-wrap { background:var(--bg); }
+.relay-card.on .relay-icon-wrap { background:var(--green-l); box-shadow:0 0 16px rgba(67,160,71,0.3); }
+
+/* Toggle Switch */
+.toggle-wrap {
+  display:flex; flex-direction:column; align-items:flex-end; gap:4px;
+}
+.toggle {
+  position:relative; width:54px; height:28px;
+}
+.toggle input { display:none; }
+.toggle-track {
+  position:absolute; inset:0; border-radius:14px;
+  background:#d0dbe8; transition:background 0.3s;
+  cursor:pointer;
+}
+.toggle input:checked + .toggle-track { background:var(--green); }
+.toggle-thumb {
+  position:absolute; top:3px; left:3px;
+  width:22px; height:22px; border-radius:50%;
+  background:#fff; box-shadow:0 1px 6px rgba(0,0,0,0.2);
+  transition:transform 0.3s cubic-bezier(.34,1.56,.64,1);
+  pointer-events:none;
+}
+.toggle input:checked ~ .toggle-thumb { transform:translateX(26px); }
+
+.toggle-lbl { font-size:11px; font-weight:600; letter-spacing:0.5px;
+  color:var(--text3); transition:color 0.3s; }
+.relay-card.on .toggle-lbl { color:var(--green); }
+
+.relay-name { font-size:17px; font-weight:700; color:var(--text); }
+.relay-desc { font-size:12px; color:var(--text3); margin-top:2px; }
+
+.relay-status-bar {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:10px 14px; border-radius:10px;
+  background:var(--bg); transition:all 0.3s;
+}
+.relay-card.on .relay-status-bar { background:rgba(67,160,71,0.1); }
+
+.relay-status-txt { font-size:12px; font-weight:600; color:var(--text3); }
+.relay-card.on .relay-status-txt { color:var(--green); }
+
+.relay-status-dot {
+  width:10px; height:10px; border-radius:50%;
+  background:var(--border); transition:all 0.3s;
+}
+.relay-card.on .relay-status-dot {
+  background:var(--green); box-shadow:0 0 10px var(--green); animation:dot-pulse 2s ease infinite;
+}
+
+/* ── Chart Card ── */
+.chart-wrap { padding:16px 16px 10px; height:230px; position:relative; }
+
+/* ── Device Info Card ── */
+.device-grid {
+  display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr));
+  gap:0;
+}
+.device-cell {
+  padding:14px 18px; display:flex; flex-direction:column; gap:3px;
+  border-right:1px solid var(--border);
+}
+.device-cell:last-child { border-right:none; }
+.device-cell-label { font-size:10px; letter-spacing:1px; color:var(--text3); text-transform:uppercase; }
+.device-cell-val   { font-size:16px; font-weight:700; color:var(--text); }
+.device-cell-val.good  { color:var(--green); }
+.device-cell-val.bad   { color:var(--red); }
+
+.rssi-bars { display:flex; gap:2px; align-items:flex-end; height:16px; }
+.rssi-bar  { width:5px; border-radius:2px; background:var(--border); transition:background 0.3s; }
+.rssi-bar.lit { background:var(--teal); }
+.rssi-bar:nth-child(1){height:4px;} .rssi-bar:nth-child(2){height:7px;}
+.rssi-bar:nth-child(3){height:11px;} .rssi-bar:nth-child(4){height:16px;}
+
+/* ══════════════════════════════════════════════
+   FLOOR PLAN PAGE
+══════════════════════════════════════════════ */
+.floorplan-wrap {
+  display:grid; grid-template-columns:1fr 300px; gap:18px; align-items:start;
+}
+@media(max-width:1000px){ .floorplan-wrap { grid-template-columns:1fr; } }
+
+.fp-card {
+  background:var(--card); border-radius:var(--radius);
+  box-shadow:var(--shadow); overflow:hidden;
+}
+.fp-hdr {
+  padding:14px 20px; border-bottom:1px solid var(--border);
+  display:flex; align-items:center; justify-content:space-between;
+}
+.fp-title { font-size:14px; font-weight:700; color:var(--text);
+  display:flex; align-items:center; gap:8px; }
+.fp-hint { font-size:11px; color:var(--text3); }
+
+.fp-svg-container {
+  padding:16px; background:var(--bg);
+  display:flex; justify-content:center; align-items:center;
+}
+
+/* SVG room hover effects */
+.fp-room { cursor:pointer; transition:all 0.3s; }
+.fp-room:hover { filter:brightness(1.08); }
+.fp-room.on rect.room-fill { opacity:1; }
+.fp-room .room-fill { transition:all 0.4s; }
+.fp-room .room-label { pointer-events:none; font-family:'Prompt',sans-serif; }
+.fp-room .room-data  { pointer-events:none; font-family:'Prompt',sans-serif; }
+
+/* Room details panel */
+.room-panel { display:flex; flex-direction:column; gap:12px; }
+
+.room-detail-card {
+  background:var(--card); border-radius:var(--radius);
+  box-shadow:var(--shadow); padding:18px 20px;
+}
+.room-detail-card h3 {
+  font-size:15px; font-weight:700; color:var(--text);
+  margin-bottom:12px; display:flex; align-items:center; gap:8px;
+}
+.room-detail-card h3 span {
+  width:28px;height:28px; border-radius:8px;
+  background:var(--primary-l); display:grid; place-items:center; font-size:14px;
+}
+
+.room-sensor-row {
+  display:flex; justify-content:space-between; align-items:center;
+  padding:7px 0; border-bottom:1px solid var(--border);
+  font-size:13px;
+}
+.room-sensor-row:last-child { border-bottom:none; }
+.room-sensor-row label { color:var(--text3); font-weight:500; }
+.room-sensor-row strong { color:var(--text); font-weight:700; }
+
+.legend-row {
+  display:flex; align-items:center; gap:10px;
+  padding:8px 0; font-size:12px; color:var(--text2);
+  border-bottom:1px solid var(--border);
+}
+.legend-row:last-child { border-bottom:none; }
+.legend-swatch {
+  width:32px; height:16px; border-radius:4px; flex-shrink:0;
+}
+
+/* ── Spinner ── */
+.spin {
+  width:14px; height:14px; border-radius:50%;
+  border:2px solid var(--border); border-top-color:var(--primary);
+  animation:spin-anim 0.7s linear infinite; opacity:0; transition:opacity 0.3s;
+}
+.spin.go { opacity:1; }
+@keyframes spin-anim { to{transform:rotate(360deg);} }
+
+/* value flash */
+@keyframes flash-val {
+  0%{ color:var(--primary); }
+}
+.flash { animation: flash-val 0.6s ease; }
+
+/* ── Footer ── */
+.page-footer {
+  text-align:center; padding:16px; font-size:12px; color:var(--text3);
+}
+</style>
+</head>
+
+<body>
+
+<!-- ════════════════════ CONFIG MODAL ════════════════════ -->
+<div class="overlay" id="cfgOverlay">
+  <div class="modal">
+    <div class="modal-title"><span>⚙️</span> ตั้งค่าการเชื่อมต่อ</div>
+
+    <div style="font-size:13px;font-weight:600;color:var(--text2);margin-bottom:12px;">🔥 Firebase RTDB</div>
+    <div class="form-group">
+      <label>Web API Key</label>
+      <input id="fApiKey" type="text" placeholder="AIzaSy…">
+    </div>
+    <div class="form-group">
+      <label>Database URL</label>
+      <input id="fDbUrl" type="text" placeholder="https://project-rtdb.asia-southeast1.firebasedatabase.app">
+    </div>
+    <div class="form-group">
+      <label>Project ID</label>
+      <input id="fProjId" type="text" placeholder="your-project-id">
+    </div>
+    <div class="form-group">
+      <label>Email (Auth)</label>
+      <input id="fEmail" type="email" placeholder="iot@example.com">
+    </div>
+    <div class="form-group">
+      <label>Password</label>
+      <input id="fPass" type="password" placeholder="••••••••">
+      <div class="hint">ไม่กรอก = ใช้ Anonymous Auth</div>
+    </div>
+
+    <div class="modal-sep"></div>
+
+    <div style="font-size:13px;font-weight:600;color:var(--text2);margin-bottom:12px;">📡 ESP32 Local (ตัวเลือก)</div>
+    <div class="form-group">
+      <label>ESP32 IP Address</label>
+      <input id="fEspIp" type="text" placeholder="192.168.1.xxx">
+      <div class="hint">ใส่ถ้าต้องการ fallback polling ผ่าน WiFi เดียวกัน</div>
+    </div>
+
+    <div class="modal-btns">
+      <button class="btn btn-outline" onclick="closeCfg()">ยกเลิก</button>
+      <button class="btn btn-primary" onclick="saveAndConnect()">🔗 เชื่อมต่อ</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════ NAVBAR ════════════════════ -->
+<nav class="navbar">
+  <div class="brand">
+    <div class="brand-icon">⚡</div>
+    <div>
+      <div class="brand-name">Smart IoT Dashboard</div>
+      <div class="brand-sub">ESP32 · FIREBASE RTDB</div>
+    </div>
+  </div>
+
+  <div class="nav-tabs">
+    <button class="nav-tab active" data-view="dashboard" onclick="switchView('dashboard',this)">
+      <span class="tab-icon">📊</span> แดชบอร์ด
+    </button>
+    <button class="nav-tab" data-view="floorplan" onclick="switchView('floorplan',this)">
+      <span class="tab-icon">🏠</span> Floor Plan
+    </button>
+  </div>
+
+  <div class="nav-right">
+    <div class="spin" id="spinner"></div>
+    <div class="clock-badge" id="clock">--:--:--</div>
+    <div class="conn-badge offline" id="connBadge">
+      <span class="conn-dot"></span><span id="connTxt">ออฟไลน์</span>
+    </div>
+    <button class="btn-cfg" onclick="openCfg()" title="ตั้งค่า">⚙</button>
+  </div>
+</nav>
+
+<!-- ════════════════════ ALERT ════════════════════ -->
+<div class="alert-banner" id="alertBanner">
+  <span id="alertIco">⚠️</span>
+  <span id="alertMsg"></span>
+</div>
+
+<!-- ════════════════════════════════════════════════
+     DASHBOARD VIEW
+════════════════════════════════════════════════ -->
+<div class="view active" id="view-dashboard">
+
+  <!-- Device status bar -->
+  <div class="card mt" style="margin-top:16px;">
+    <div class="card-hdr">
+      <div class="card-title"><span class="dot"></span> สถานะอุปกรณ์</div>
+      <div id="devId" style="font-size:12px;color:var(--text3);">---</div>
+    </div>
+    <div class="device-grid">
+      <div class="device-cell">
+        <div class="device-cell-label">Connection</div>
+        <div class="device-cell-val" id="dOnline">OFFLINE</div>
+      </div>
+      <div class="device-cell">
+        <div class="device-cell-label">IP Address</div>
+        <div class="device-cell-val" id="dIp" style="font-size:14px;">---</div>
+      </div>
+      <div class="device-cell">
+        <div class="device-cell-label">สัญญาณ WiFi</div>
+        <div class="device-cell-val" id="dRssi">---</div>
+        <div class="rssi-bars" id="rssiBars">
+          <div class="rssi-bar" id="rb1"></div><div class="rssi-bar" id="rb2"></div>
+          <div class="rssi-bar" id="rb3"></div><div class="rssi-bar" id="rb4"></div>
+        </div>
+      </div>
+      <div class="device-cell">
+        <div class="device-cell-label">Uptime</div>
+        <div class="device-cell-val" id="dUptime" style="font-size:14px;">--:--:--</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sensor Gauges Row -->
+  <div class="grid g3 mt">
+
+    <!-- Temperature -->
+    <div class="gauge-card temp">
+      <div class="gauge-label">🌡 อุณหภูมิ</div>
+      <div class="gauge-svg-wrap">
+        <svg viewBox="0 0 160 90" width="160" height="90">
+          <path class="gauge-arc-bg" d="M14 82 A66 66 0 0 1 146 82" pathLength="100"/>
+          <path class="gauge-arc-fill" id="arcTemp"
+            d="M14 82 A66 66 0 0 1 146 82"
+            stroke="#ff8f00" pathLength="100"
+            stroke-dasharray="100" stroke-dashoffset="100"/>
+        </svg>
+        <div class="gauge-center">
+          <span class="gauge-val" id="tempVal" style="color:#ff8f00;">--</span>
+          <span class="gauge-unit">°C</span>
+        </div>
+      </div>
+      <div class="gauge-sub">
+        <div class="gauge-chip chip-amber" id="tempChip">---</div>
+      </div>
+      <div style="font-size:11px;color:var(--text3);">Heat Index: <strong id="hiVal" style="color:var(--amber);">--°C</strong></div>
+    </div>
+
+    <!-- Humidity -->
+    <div class="gauge-card hum">
+      <div class="gauge-label">💧 ความชื้น</div>
+      <div class="gauge-svg-wrap">
+        <svg viewBox="0 0 160 90" width="160" height="90">
+          <path class="gauge-arc-bg" d="M14 82 A66 66 0 0 1 146 82" pathLength="100"/>
+          <path class="gauge-arc-fill" id="arcHum"
+            d="M14 82 A66 66 0 0 1 146 82"
+            stroke="#0288d1" pathLength="100"
+            stroke-dasharray="100" stroke-dashoffset="100"/>
+        </svg>
+        <div class="gauge-center">
+          <span class="gauge-val" id="humVal" style="color:#0288d1;">--</span>
+          <span class="gauge-unit">%</span>
+        </div>
+      </div>
+      <div class="gauge-sub">
+        <div class="gauge-chip chip-teal" id="humChip">---</div>
+      </div>
+      <div style="font-size:11px;color:var(--text3);">Min <strong id="humMin">--</strong> · Max <strong id="humMax">--</strong> %</div>
+    </div>
+
+    <!-- LDR Brightness -->
+    <div class="gauge-card ldr">
+      <div class="gauge-label">☀️ ความสว่าง</div>
+      <div class="gauge-svg-wrap">
+        <svg viewBox="0 0 160 90" width="160" height="90">
+          <path class="gauge-arc-bg" d="M14 82 A66 66 0 0 1 146 82" pathLength="100"/>
+          <path class="gauge-arc-fill" id="arcLdr"
+            d="M14 82 A66 66 0 0 1 146 82"
+            stroke="#f9a825" pathLength="100"
+            stroke-dasharray="100" stroke-dashoffset="100"/>
+        </svg>
+        <div class="gauge-center">
+          <span class="gauge-val" id="ldrVal" style="color:#f9a825;">--</span>
+          <span class="gauge-unit">%</span>
+        </div>
+      </div>
+      <div class="gauge-sub">
+        <div class="gauge-chip chip-amber" id="ldrChip">---</div>
+      </div>
+      <div style="font-size:11px;color:var(--text3);">LDR Sensor · GPIO 32</div>
+    </div>
+
+  </div>
+
+  <!-- Relay Controls -->
+  <div class="grid g2 mt">
+
+    <div class="relay-card" id="rcard1" onclick="toggleRelay(1)">
+      <div class="relay-top">
+        <div class="relay-icon-wrap" id="ricon1">🔌</div>
+        <div class="toggle-wrap">
+          <label class="toggle">
+            <input type="checkbox" id="rtog1" onclick="event.stopPropagation(); toggleRelay(1)">
+            <div class="toggle-track"></div>
+            <div class="toggle-thumb"></div>
+          </label>
+          <div class="toggle-lbl" id="rtxt1">ปิด</div>
+        </div>
+      </div>
+      <div>
+        <div class="relay-name">รีเลย์ 1 — ห้องนั่งเล่น</div>
+        <div class="relay-desc">GPIO 18 · Active LOW Module</div>
+      </div>
+      <div class="relay-status-bar">
+        <span class="relay-status-txt" id="rstatus1">⬤ สถานะ: ปิด</span>
+        <span class="relay-status-dot" id="rdot1"></span>
+      </div>
+    </div>
+
+    <div class="relay-card" id="rcard2" onclick="toggleRelay(2)">
+      <div class="relay-top">
+        <div class="relay-icon-wrap" id="ricon2">💡</div>
+        <div class="toggle-wrap">
+          <label class="toggle">
+            <input type="checkbox" id="rtog2" onclick="event.stopPropagation(); toggleRelay(2)">
+            <div class="toggle-track"></div>
+            <div class="toggle-thumb"></div>
+          </label>
+          <div class="toggle-lbl" id="rtxt2">ปิด</div>
+        </div>
+      </div>
+      <div>
+        <div class="relay-name">รีเลย์ 2 — ห้องนอน</div>
+        <div class="relay-desc">GPIO 19 · Active LOW Module</div>
+      </div>
+      <div class="relay-status-bar">
+        <span class="relay-status-txt" id="rstatus2">⬤ สถานะ: ปิด</span>
+        <span class="relay-status-dot" id="rdot2"></span>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Chart -->
+  <div class="card mt">
+    <div class="card-hdr">
+      <div class="card-title"><span class="dot"></span> กราฟข้อมูลเรียลไทม์</div>
+      <div style="font-size:12px;color:var(--text3);">อัปเดตทุก 4 วินาที · แสดง 30 จุดล่าสุด</div>
+    </div>
+    <div class="chart-wrap">
+      <canvas id="mainChart"></canvas>
+    </div>
+  </div>
+
+</div><!-- /view-dashboard -->
+
+<!-- ════════════════════════════════════════════════
+     FLOOR PLAN VIEW
+════════════════════════════════════════════════ -->
+<div class="view" id="view-floorplan">
+  <div class="floorplan-wrap" style="margin-top:16px;">
+
+    <!-- SVG Floor Plan -->
+    <div class="fp-card">
+      <div class="fp-hdr">
+        <div class="fp-title">🏠 ผังพื้น — Smart Home</div>
+        <div class="fp-hint">คลิกห้องที่มีรีเลย์เพื่อสั่งเปิด/ปิด</div>
+      </div>
+      <div class="fp-svg-container">
+        <svg id="floorSVG" viewBox="0 0 680 450" width="100%" style="max-width:680px;"
+             xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <!-- Glow filter for active rooms -->
+            <filter id="glow-warm" x="-20%" y="-20%" width="140%" height="140%">
+              <feGaussianBlur stdDeviation="4" result="blur"/>
+              <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+            </filter>
+            <filter id="glow-blue" x="-20%" y="-20%" width="140%" height="140%">
+              <feGaussianBlur stdDeviation="3" result="blur"/>
+              <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+            </filter>
+            <!-- Floor texture pattern -->
+            <pattern id="floorTile" x="0" y="0" width="20" height="20" patternUnits="userSpaceOnUse">
+              <rect width="20" height="20" fill="#f5f8fc"/>
+              <rect x="0" y="0" width="10" height="10" fill="#edf1f7" opacity="0.5"/>
+              <rect x="10" y="10" width="10" height="10" fill="#edf1f7" opacity="0.5"/>
+            </pattern>
+            <pattern id="floorTileWarm" x="0" y="0" width="20" height="20" patternUnits="userSpaceOnUse">
+              <rect width="20" height="20" fill="#fffde7"/>
+              <rect x="0" y="0" width="10" height="10" fill="#fff9c4" opacity="0.6"/>
+              <rect x="10" y="10" width="10" height="10" fill="#fff9c4" opacity="0.6"/>
+            </pattern>
+          </defs>
+
+          <!-- Outer building shadow -->
+          <rect x="34" y="34" width="614" height="390" rx="14" fill="rgba(0,40,80,0.12)"/>
+
+          <!-- Outer walls -->
+          <rect x="30" y="30" width="620" height="390" rx="12" fill="#c8d6e5" stroke="#8fa3bb" stroke-width="3"/>
+
+          <!-- ── ROOM 1: ห้องนั่งเล่น (Living Room) — Relay 1 ── -->
+          <g class="fp-room" id="fp-living" onclick="toggleRelay(1)">
+            <!-- Floor -->
+            <rect id="living-floor" x="38" y="38" width="310" height="230" rx="8"
+              fill="url(#floorTile)" stroke="#b0c4da" stroke-width="1.5"/>
+            <!-- ON glow overlay -->
+            <rect id="living-glow" x="38" y="38" width="310" height="230" rx="8"
+              fill="rgba(255,200,0,0)" stroke="none"
+              style="transition:fill 0.5s;"/>
+            <!-- Room label -->
+            <text x="193" y="80" text-anchor="middle" font-size="15" font-weight="700" fill="#2d4a6e">ห้องนั่งเล่น</text>
+            <text x="193" y="98" text-anchor="middle" font-size="11" fill="#6b8aaa">Living Room · รีเลย์ 1</text>
+            <!-- Sensor data -->
+            <rect x="55" y="160" width="110" height="52" rx="8" fill="rgba(255,255,255,0.85)" stroke="#dde6f0" stroke-width="1"/>
+            <text x="110" y="178" text-anchor="middle" font-size="11" fill="#6b8aaa">🌡 อุณหภูมิ</text>
+            <text id="fp-temp" x="110" y="201" text-anchor="middle" font-size="18" font-weight="700" fill="#e65100">--°C</text>
+            <!-- Furniture: sofa simplified -->
+            <rect x="95" y="120" width="196" height="32" rx="10" fill="#b0c4da" opacity="0.6"/>
+            <rect x="95" y="108" width="30" height="24" rx="6" fill="#8fa3bb" opacity="0.6"/>
+            <rect x="261" y="108" width="30" height="24" rx="6" fill="#8fa3bb" opacity="0.6"/>
+            <!-- Relay indicator -->
+            <circle id="living-ind" cx="316" cy="51" r="8" fill="#d0dbe8" stroke="#fff" stroke-width="1.5"
+              style="transition:all 0.4s;"/>
+            <text x="316" y="55" text-anchor="middle" font-size="8" fill="#fff" font-weight="700" id="living-ind-txt">○</text>
+          </g>
+
+          <!-- ── ROOM 2: ห้องนอน (Bedroom) — Relay 2 ── -->
+          <g class="fp-room" id="fp-bedroom" onclick="toggleRelay(2)">
+            <rect id="bedroom-floor" x="356" y="38" width="286" height="230" rx="8"
+              fill="url(#floorTile)" stroke="#b0c4da" stroke-width="1.5"/>
+            <rect id="bedroom-glow" x="356" y="38" width="286" height="230" rx="8"
+              fill="rgba(255,200,0,0)" stroke="none" style="transition:fill 0.5s;"/>
+            <text x="499" y="80" text-anchor="middle" font-size="15" font-weight="700" fill="#2d4a6e">ห้องนอน</text>
+            <text x="499" y="98" text-anchor="middle" font-size="11" fill="#6b8aaa">Bedroom · รีเลย์ 2</text>
+            <!-- Humidity sensor display -->
+            <rect x="505" y="160" width="110" height="52" rx="8" fill="rgba(255,255,255,0.85)" stroke="#dde6f0" stroke-width="1"/>
+            <text x="560" y="178" text-anchor="middle" font-size="11" fill="#6b8aaa">💧 ความชื้น</text>
+            <text id="fp-hum" x="560" y="201" text-anchor="middle" font-size="18" font-weight="700" fill="#0277bd">--%</text>
+            <!-- Furniture: bed simplified -->
+            <rect x="390" y="100" width="180" height="110" rx="10" fill="#b0c4da" opacity="0.6"/>
+            <rect x="390" y="100" width="180" height="35" rx="8" fill="#8fa3bb" opacity="0.6"/>
+            <circle cx="410" cy="117" r="12" fill="#c8d6e5" opacity="0.8"/>
+            <circle cx="550" cy="117" r="12" fill="#c8d6e5" opacity="0.8"/>
+            <!-- Relay indicator -->
+            <circle id="bedroom-ind" cx="630" cy="51" r="8" fill="#d0dbe8" stroke="#fff" stroke-width="1.5"
+              style="transition:all 0.4s;"/>
+            <text x="630" y="55" text-anchor="middle" font-size="8" fill="#fff" font-weight="700" id="bedroom-ind-txt">○</text>
+          </g>
+
+          <!-- ── Horizontal divider wall ── -->
+          <rect x="38" y="272" width="614" height="10" fill="#b0c4da"/>
+
+          <!-- ── ROOM 3: ครัว (Kitchen) ── -->
+          <g class="fp-room" id="fp-kitchen">
+            <rect x="38" y="282" width="200" height="130" rx="8"
+              fill="url(#floorTile)" stroke="#b0c4da" stroke-width="1.5"/>
+            <text x="138" y="316" text-anchor="middle" font-size="13" font-weight="700" fill="#2d4a6e">ครัว</text>
+            <text x="138" y="332" text-anchor="middle" font-size="10" fill="#6b8aaa">Kitchen</text>
+            <!-- LDR brightness display -->
+            <rect x="80" y="348" width="116" height="44" rx="8" fill="rgba(255,255,255,0.85)" stroke="#dde6f0" stroke-width="1"/>
+            <text x="138" y="363" text-anchor="middle" font-size="10" fill="#6b8aaa">☀️ ความสว่าง</text>
+            <text id="fp-ldr" x="138" y="384" text-anchor="middle" font-size="16" font-weight="700" fill="#e65100">--%</text>
+          </g>
+
+          <!-- ── ROOM 4: ห้องน้ำ (Bathroom) ── -->
+          <g class="fp-room" id="fp-bathroom">
+            <rect x="246" y="282" width="196" height="130" rx="8"
+              fill="url(#floorTile)" stroke="#b0c4da" stroke-width="1.5"/>
+            <text x="344" y="316" text-anchor="middle" font-size="13" font-weight="700" fill="#2d4a6e">ห้องน้ำ</text>
+            <text x="344" y="332" text-anchor="middle" font-size="10" fill="#6b8aaa">Bathroom</text>
+            <!-- Bath icon simplified -->
+            <rect x="300" y="345" width="90" height="45" rx="20" fill="#b0c4da" opacity="0.5"/>
+            <ellipse cx="345" cy="350" rx="20" ry="8" fill="#8fa3bb" opacity="0.5"/>
+          </g>
+
+          <!-- ── ROOM 5: ทางเดิน / ประตูทางออก ── -->
+          <g id="fp-corridor">
+            <rect x="450" y="282" width="202" height="130" rx="8"
+              fill="url(#floorTile)" stroke="#b0c4da" stroke-width="1.5"/>
+            <text x="551" y="316" text-anchor="middle" font-size="13" font-weight="700" fill="#2d4a6e">ทางเดิน</text>
+            <text x="551" y="332" text-anchor="middle" font-size="10" fill="#6b8aaa">Corridor / Exit</text>
+          </g>
+
+          <!-- ── Vertical interior walls ── -->
+          <rect x="240" y="282" width="8" height="138" fill="#b0c4da"/>
+          <rect x="444" y="282" width="8" height="138" fill="#b0c4da"/>
+          <rect x="350" y="38" width="8" height="234" fill="#b0c4da"/>
+
+          <!-- ── Doors (arc indicators) ── -->
+          <!-- Living room door (bottom) -->
+          <path d="M150 272 Q150 252 170 252" fill="none" stroke="#8fa3bb" stroke-width="2" stroke-dasharray="4,2"/>
+          <rect x="148" y="262" width="22" height="10" rx="2" fill="#d0dbe8"/>
+
+          <!-- Bedroom door (bottom) -->
+          <path d="M500 272 Q500 252 520 252" fill="none" stroke="#8fa3bb" stroke-width="2" stroke-dasharray="4,2"/>
+          <rect x="498" y="262" width="22" height="10" rx="2" fill="#d0dbe8"/>
+
+          <!-- Main entrance door (bottom of building) -->
+          <rect x="505" y="415" width="60" height="8" rx="2" fill="#eef2f7"/>
+          <path d="M505 415 Q505 395 535 395" fill="none" stroke="#8fa3bb" stroke-width="2" stroke-dasharray="4,2"/>
+          <text x="535" y="435" text-anchor="middle" font-size="11" fill="#6b8aaa">ประตู</text>
+
+          <!-- Legend badges -->
+          <rect x="38" y="4" width="90" height="20" rx="6" fill="#fff9c4" stroke="#ffd54f" stroke-width="1"/>
+          <text x="83" y="17" text-anchor="middle" font-size="9" fill="#e65100" font-weight="600">● = รีเลย์ ON</text>
+          <rect x="138" y="4" width="90" height="20" rx="6" fill="#e8f5e9" stroke="#a5d6a7" stroke-width="1"/>
+          <text x="183" y="17" text-anchor="middle" font-size="9" fill="#2e7d32" font-weight="600">คลิก = Toggle</text>
+
+        </svg>
+      </div>
+    </div>
+
+    <!-- Side Panel: Room Details + Legend -->
+    <div class="room-panel">
+
+      <div class="room-detail-card">
+        <h3><span>📡</span> ค่า Sensor ปัจจุบัน</h3>
+        <div class="room-sensor-row">
+          <label>🌡 อุณหภูมิ</label>
+          <strong id="fpd-temp">--°C</strong>
+        </div>
+        <div class="room-sensor-row">
+          <label>💧 ความชื้น</label>
+          <strong id="fpd-hum">--%</strong>
+        </div>
+        <div class="room-sensor-row">
+          <label>☀️ ความสว่าง</label>
+          <strong id="fpd-ldr">--%</strong>
+        </div>
+        <div class="room-sensor-row">
+          <label>🌡 Heat Index</label>
+          <strong id="fpd-hi">--°C</strong>
+        </div>
+      </div>
+
+      <div class="room-detail-card">
+        <h3><span>🔌</span> สถานะรีเลย์</h3>
+        <div class="room-sensor-row">
+          <label>รีเลย์ 1 (ห้องนั่งเล่น)</label>
+          <strong id="fpd-r1" style="color:var(--text3);">ปิด</strong>
+        </div>
+        <div class="room-sensor-row">
+          <label>รีเลย์ 2 (ห้องนอน)</label>
+          <strong id="fpd-r2" style="color:var(--text3);">ปิด</strong>
+        </div>
+      </div>
+
+      <div class="room-detail-card">
+        <h3><span>📖</span> สัญลักษณ์</h3>
+        <div class="legend-row">
+          <div class="legend-swatch" style="background:linear-gradient(135deg,#fff9c4,#ffe082);border:1.5px solid #ffd54f;"></div>
+          <span>ห้องที่รีเลย์เปิดอยู่</span>
+        </div>
+        <div class="legend-row">
+          <div class="legend-swatch" style="background:#f5f8fc;border:1.5px solid #b0c4da;"></div>
+          <span>ห้องปกติ (รีเลย์ปิด)</span>
+        </div>
+        <div class="legend-row">
+          <div class="legend-swatch" style="background:var(--green);border-radius:50%;width:16px;"></div>
+          <span>Indicator = รีเลย์ ON</span>
+        </div>
+        <div class="legend-row">
+          <div class="legend-swatch" style="background:var(--border);border-radius:50%;width:16px;"></div>
+          <span>Indicator = รีเลย์ OFF</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div><!-- /view-floorplan -->
+
+<div class="page-footer">
+  Smart IoT Dashboard v3.0 · ESP32 + Firebase RTDB · <span id="lastUpdate">ยังไม่ได้รับข้อมูล</span>
+</div>
+
+<!-- ════════════════════ JAVASCRIPT ════════════════════ -->
+<script>
+'use strict';
+
+/* ─────────────────────────────────────────
+   STATE
+───────────────────────────────────────── */
+const S = {
+  temp: null, hum: null, ldr: null, hi: null,
+  relay1: false, relay2: false,
+  humMin: Infinity, humMax: -Infinity,
+  deviceId: 'iot_device',
+  espIp: null,
+};
+let db = null, fbApp = null;
+let fbListeners = [];
+let chart = null;
+const chartData = { labels:[], t:[], h:[], l:[] };
+const MAX_PTS = 30;
+
+/* ─────────────────────────────────────────
+   CLOCK
+───────────────────────────────────────── */
+(function tick() {
+  const n=new Date(), p=v=>String(v).padStart(2,'0');
+  document.getElementById('clock').textContent =
+    `${p(n.getHours())}:${p(n.getMinutes())}:${p(n.getSeconds())}`;
+  setTimeout(tick,1000);
+})();
+
+/* ─────────────────────────────────────────
+   CONFIG
+───────────────────────────────────────── */
+function openCfg() {
+  const c = loadCfg();
+  if (c) {
+    document.getElementById('fApiKey').value = c.apiKey||'';
+    document.getElementById('fDbUrl').value  = c.dbUrl||'';
+    document.getElementById('fProjId').value = c.projId||'';
+    document.getElementById('fEmail').value  = c.email||'';
+    document.getElementById('fPass').value   = c.pass||'';
+    document.getElementById('fEspIp').value  = c.espIp||'';
+  }
+  document.getElementById('cfgOverlay').classList.add('show');
+}
+function closeCfg() { document.getElementById('cfgOverlay').classList.remove('show'); }
+document.getElementById('cfgOverlay').addEventListener('click', e=>{
+  if(e.target===document.getElementById('cfgOverlay')) closeCfg();
+});
+function loadCfg() {
+  try { return JSON.parse(localStorage.getItem('iotDash3')); } catch{ return null; }
+}
+function saveAndConnect() {
+  const c = {
+    apiKey: document.getElementById('fApiKey').value.trim(),
+    dbUrl:  document.getElementById('fDbUrl').value.trim(),
+    projId: document.getElementById('fProjId').value.trim(),
+    email:  document.getElementById('fEmail').value.trim(),
+    pass:   document.getElementById('fPass').value,
+    espIp:  document.getElementById('fEspIp').value.trim(),
+  };
+  if (!c.apiKey||!c.dbUrl||!c.projId) {
+    alert('กรุณากรอก API Key, Database URL และ Project ID'); return;
+  }
+  localStorage.setItem('iotDash3', JSON.stringify(c));
+  closeCfg();
+  bootFirebase(c);
+}
+
+/* ─────────────────────────────────────────
+   FIREBASE BOOT
+───────────────────────────────────────── */
+function bootFirebase(c) {
+  setConn('linking','กำลังเชื่อมต่อ…');
+  fbListeners.forEach(fn=>fn()); fbListeners=[];
+  if (fbApp) { try { firebase.app().delete(); } catch{} }
+
+  S.espIp   = c.espIp || null;
+  S.deviceId = 'iot_device';
+  document.getElementById('devId').textContent = `PATH: /${S.deviceId}`;
+
+  try {
+    fbApp = firebase.initializeApp({
+      apiKey:      c.apiKey,
+      databaseURL: c.dbUrl,
+      projectId:   c.projId,
+      authDomain:  `${c.projId}.firebaseapp.com`,
+    });
+    db = firebase.database();
+
+    const auth = c.email && c.pass
+      ? firebase.auth().signInWithEmailAndPassword(c.email, c.pass)
+      : firebase.auth().signInAnonymously();
+
+    auth.then(()=>{
+      startFirebaseListeners();
+    }).catch(err=>{
+      console.warn('[Auth] Failed, trying anonymous:', err.code);
+      firebase.auth().signInAnonymously().then(()=>startFirebaseListeners())
+        .catch(e=>{ setConn('offline',`Auth Error: ${e.code}`); });
+    });
+  } catch(err) {
+    setConn('offline',`Init Error: ${err.message}`);
+  }
+}
+
+function startFirebaseListeners() {
+  const root = `/${S.deviceId}`;
+
+  // Sensors listener
+  const sRef = db.ref(`${root}/sensors`);
+  sRef.on('value', snap => {
+    const d = snap.val(); if(!d) return;
+    pulse();
+    onSensorData(d);
+    setConn('online','ออนไลน์');
+  });
+  fbListeners.push(()=>sRef.off());
+
+  // Control readback
+  const cRef = db.ref(`${root}/control`);
+  cRef.on('value', snap => {
+    const d = snap.val(); if(!d) return;
+    if(d.relay1 !== undefined) updateRelayUI(1, d.relay1);
+    if(d.relay2 !== undefined) updateRelayUI(2, d.relay2);
+  });
+  fbListeners.push(()=>cRef.off());
+
+  // Status
+  const stRef = db.ref(`${root}/status`);
+  stRef.on('value', snap => {
+    const d = snap.val(); if(!d) return;
+    onStatus(d);
+  });
+  fbListeners.push(()=>stRef.off());
+
+  // Connection monitoring
+  db.ref('.info/connected').on('value', snap=>{
+    if(!snap.val()) setConn('linking','กำลังเชื่อมต่อใหม่…');
+  });
+}
+
+/* ─────────────────────────────────────────
+   SENSOR DATA HANDLER
+───────────────────────────────────────── */
+function onSensorData(d) {
+  S.temp = parseFloat(d.temperature);
+  S.hum  = parseFloat(d.humidity);
+  S.ldr  = parseInt(d.ldr);
+  S.hi   = d.heat_index ? parseFloat(d.heat_index) : null;
+
+  if (!isNaN(S.temp)) updateTempUI(S.temp);
+  if (!isNaN(S.hum))  updateHumUI(S.hum);
+  if (!isNaN(S.ldr))  updateLdrUI(S.ldr);
+  if (S.hi !== null)  setEl('hiVal', S.hi.toFixed(1)+'°C');
+
+  // Update floor plan side panel
+  if (!isNaN(S.temp)) {
+    setEl('fpd-temp', S.temp.toFixed(1)+'°C');
+    setEl('fp-temp', S.temp.toFixed(1)+'°C');
+  }
+  if (!isNaN(S.hum)) {
+    setEl('fpd-hum', S.hum.toFixed(1)+'%');
+    setEl('fp-hum', S.hum.toFixed(1)+'%');
+  }
+  if (!isNaN(S.ldr)) {
+    setEl('fpd-ldr', S.ldr+'%');
+    setEl('fp-ldr', S.ldr+'%');
+  }
+  if (S.hi !== null) setEl('fpd-hi', S.hi.toFixed(1)+'°C');
+
+  // Push to chart
+  pushChartData(S.temp, S.hum, S.ldr);
+
+  checkAlarm(S.temp, S.hum);
+  setEl('lastUpdate', '⏱ อัปเดตล่าสุด: ' + new Date().toLocaleTimeString('th-TH'));
+}
+
+function updateTempUI(t) {
+  const el = document.getElementById('tempVal');
+  el.textContent = t.toFixed(1);
+  flash(el);
+  // Arc gauge: range 0–60°C
+  const pct = Math.min(1, Math.max(0, t/60));
+  const col = t>=38 ? '#e53935' : t>=32 ? '#fb8c00' : t<=15 ? '#0288d1' : '#43a047';
+  setArc('arcTemp', pct, col);
+  el.style.color = col;
+  // Chip
+  const chip = document.getElementById('tempChip');
+  if (t>=38)      { chip.textContent='🔥 วิกฤต'; chip.className='gauge-chip chip-red'; }
+  else if (t>=32) { chip.textContent='↑ อุ่น';   chip.className='gauge-chip chip-amber'; }
+  else if (t<=15) { chip.textContent='❄ เย็น';   chip.className='gauge-chip chip-teal'; }
+  else            { chip.textContent='✓ ปกติ';   chip.className='gauge-chip chip-green'; }
+}
+
+function updateHumUI(h) {
+  const el = document.getElementById('humVal');
+  el.textContent = h.toFixed(1);
+  flash(el);
+  if (h < S.humMin) { S.humMin=h; setEl('humMin', h.toFixed(1)); }
+  if (h > S.humMax) { S.humMax=h; setEl('humMax', h.toFixed(1)); }
+  const pct = Math.min(1, Math.max(0, h/100));
+  const col = h>=80 ? '#e53935' : h<30 ? '#fb8c00' : '#0288d1';
+  setArc('arcHum', pct, col);
+  el.style.color = col;
+  const chip = document.getElementById('humChip');
+  if (h>=80)      { chip.textContent='💧 สูง';    chip.className='gauge-chip chip-red'; }
+  else if (h<30)  { chip.textContent='🏜 แห้ง';  chip.className='gauge-chip chip-amber'; }
+  else            { chip.textContent='✓ เหมาะสม'; chip.className='gauge-chip chip-teal'; }
+}
+
+function updateLdrUI(l) {
+  const el = document.getElementById('ldrVal');
+  el.textContent = l;
+  flash(el);
+  const pct = Math.min(1, Math.max(0, l/100));
+  const col = l>=80 ? '#f9a825' : l>=40 ? '#fbc02d' : '#78909c';
+  setArc('arcLdr', pct, col);
+  el.style.color = col;
+  const chip = document.getElementById('ldrChip');
+  if (l>=80)      { chip.textContent='☀ สว่างมาก';  chip.className='gauge-chip chip-amber'; }
+  else if (l>=40) { chip.textContent='⛅ สว่างปานกลาง'; chip.className='gauge-chip chip-purple'; }
+  else            { chip.textContent='🌙 มืด';       chip.className='gauge-chip chip-teal'; }
+}
+
+/* ─────────────────────────────────────────
+   STATUS HANDLER
+───────────────────────────────────────── */
+function onStatus(d) {
+  const onEl = document.getElementById('dOnline');
+  if (d.online) {
+    onEl.textContent='ONLINE'; onEl.className='device-cell-val good';
+  } else {
+    onEl.textContent='OFFLINE'; onEl.className='device-cell-val bad';
+  }
+  if (d.ip)     setEl('dIp', d.ip);
+  if (d.rssi != null) {
+    setEl('dRssi', d.rssi+' dBm');
+    const bars = d.rssi>=-55?4:d.rssi>=-65?3:d.rssi>=-75?2:1;
+    for(let i=1;i<=4;i++) {
+      document.getElementById(`rb${i}`).classList.toggle('lit', i<=bars);
+    }
+  }
+  if (d.uptime != null) {
+    const s=d.uptime;
+    const p=v=>String(v).padStart(2,'0');
+    setEl('dUptime', `${p(Math.floor(s/3600))}:${p(Math.floor(s%3600/60))}:${p(s%60)}`);
+  }
+}
+
+/* ─────────────────────────────────────────
+   RELAY CONTROL
+───────────────────────────────────────── */
+function toggleRelay(n) {
+  const newState = !(n===1 ? S.relay1 : S.relay2);
+  updateRelayUI(n, newState);
+
+  if (db) {
+    const path = `/${S.deviceId}/control/relay${n}`;
+    db.ref(path).set(newState).catch(err=>{
+      console.error('[Relay] Firebase write failed:', err);
+      updateRelayUI(n, !newState); // revert
+    });
+  } else if (S.espIp) {
+    const action = newState ? 'on' : 'off';
+    fetch(`http://${S.espIp}/api/relay${n}?state=${action}`)
+      .then(r=>r.json())
+      .then(d=>{ if(!d.success) updateRelayUI(n, !newState); })
+      .catch(()=>updateRelayUI(n, !newState));
+  }
+}
+
+function updateRelayUI(n, state) {
+  if (n===1) S.relay1=state; else S.relay2=state;
+
+  const card  = document.getElementById(`rcard${n}`);
+  const tog   = document.getElementById(`rtog${n}`);
+  const txt   = document.getElementById(`rtxt${n}`);
+  const st    = document.getElementById(`rstatus${n}`);
+
+  card.classList.toggle('on', state);
+  tog.checked = state;
+  txt.textContent  = state ? 'เปิด' : 'ปิด';
+  st.textContent   = state ? '⬤ สถานะ: เปิด' : '⬤ สถานะ: ปิด';
+
+  // Floor plan
+  const room = n===1 ? 'living' : 'bedroom';
+  updateFloorRoom(room, state);
+  const fpKey = n===1 ? 'fpd-r1' : 'fpd-r2';
+  const fpEl  = document.getElementById(fpKey);
+  if (fpEl) { fpEl.textContent=state?'เปิด':'ปิด'; fpEl.style.color=state?'var(--green)':'var(--text3)'; }
+}
+
+function updateFloorRoom(roomId, isOn) {
+  const glow = document.getElementById(`${roomId}-glow`);
+  const ind  = document.getElementById(`${roomId}-ind`);
+  const txt  = document.getElementById(`${roomId}-ind-txt`);
+  if (glow) glow.setAttribute('fill', isOn ? 'rgba(255,213,0,0.22)' : 'rgba(255,200,0,0)');
+  if (ind)  ind.setAttribute('fill', isOn ? '#43a047' : '#d0dbe8');
+  if (ind && isOn) ind.style.filter='drop-shadow(0 0 6px #43a047)';
+  else if (ind)    ind.style.filter='none';
+  if (txt) txt.textContent = isOn ? '●' : '○';
+}
+
+/* ─────────────────────────────────────────
+   ALARM
+───────────────────────────────────────── */
+function checkAlarm(t, h) {
+  const b=document.getElementById('alertBanner');
+  const m=document.getElementById('alertMsg');
+  const i=document.getElementById('alertIco');
+  if (!b) return;
+  if (t >= 38) {
+    b.className='alert-banner show crit';
+    i.textContent='🚨'; m.textContent=`วิกฤต! อุณหภูมิสูงมาก: ${t.toFixed(1)}°C`;
+  } else if (t >= 32 || h >= 80) {
+    b.className='alert-banner show warn';
+    i.textContent='⚠️';
+    m.textContent = t>=32 ? `เตือน: อุณหภูมิค่อนข้างสูง ${t.toFixed(1)}°C`
+                          : `เตือน: ความชื้นสูง ${h.toFixed(1)}%`;
+  } else {
+    b.className='alert-banner';
+  }
+}
+
+/* ─────────────────────────────────────────
+   CHART
+───────────────────────────────────────── */
+function initChart() {
+  const ctx = document.getElementById('mainChart').getContext('2d');
+  const mk = (r,g,b) => `rgba(${r},${g},${b}`;
+
+  chart = new Chart(ctx, {
+    type:'line',
+    data: {
+      labels: chartData.labels,
+      datasets: [
+        { label:'อุณหภูมิ (°C)', data:chartData.t,
+          borderColor:'#fb8c00', backgroundColor:'rgba(251,140,0,0.08)',
+          borderWidth:2.5, pointRadius:3, pointBackgroundColor:'#fb8c00',
+          tension:0.4, fill:true, yAxisID:'yLeft' },
+        { label:'ความชื้น (%)', data:chartData.h,
+          borderColor:'#0288d1', backgroundColor:'rgba(2,136,209,0.08)',
+          borderWidth:2.5, pointRadius:3, pointBackgroundColor:'#0288d1',
+          tension:0.4, fill:true, yAxisID:'yLeft' },
+        { label:'ความสว่าง (%)', data:chartData.l,
+          borderColor:'#f9a825', backgroundColor:'rgba(249,168,37,0.05)',
+          borderWidth:2, pointRadius:2, pointBackgroundColor:'#f9a825',
+          tension:0.4, fill:true, yAxisID:'yLeft' },
+      ]
+    },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      interaction: { mode:'index', intersect:false },
+      plugins: {
+        legend: { position:'top', labels:{
+          font:{family:'Prompt',size:12}, color:'#4a6380', padding:16,
+          usePointStyle:true, pointStyleWidth:10,
+        }},
+        tooltip: {
+          backgroundColor:'#fff', titleColor:'#1a2f4a', bodyColor:'#4a6380',
+          borderColor:'#dde6f0', borderWidth:1, padding:12,
+          titleFont:{family:'Prompt',weight:'600'},
+          bodyFont:{family:'Prompt',size:12},
+          callbacks:{
+            label: ctx => {
+              const u = ctx.datasetIndex===0?'°C':'%';
+              return `  ${ctx.dataset.label}: ${ctx.parsed.y?.toFixed(1)}${u}`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: { grid:{color:'rgba(180,195,210,0.3)'}, ticks:{font:{family:'Prompt',size:11},color:'#8ea6bd'} },
+        yLeft: { grid:{color:'rgba(180,195,210,0.3)'}, ticks:{font:{family:'Prompt',size:11},color:'#8ea6bd'},
+          suggestedMin:0, suggestedMax:100 },
+      }
+    }
+  });
+}
+
+function pushChartData(t, h, l) {
+  if(!chart) return;
+  const time = new Date().toLocaleTimeString('th-TH', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  if (chartData.labels.length >= MAX_PTS) {
+    chartData.labels.shift(); chartData.t.shift(); chartData.h.shift(); chartData.l.shift();
+  }
+  chartData.labels.push(time);
+  chartData.t.push(isNaN(t)?null:+t.toFixed(1));
+  chartData.h.push(isNaN(h)?null:+h.toFixed(1));
+  chartData.l.push(isNaN(l)?null:l);
+  chart.update();
+}
+
+/* ─────────────────────────────────────────
+   UI HELPERS
+───────────────────────────────────────── */
+function setConn(state, txt) {
+  const b=document.getElementById('connBadge');
+  const t=document.getElementById('connTxt');
+  b.className=`conn-badge ${state}`;
+  t.textContent=txt;
+}
+
+function setArc(id, pct, color) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.style.strokeDashoffset = 100 - pct*100;
+  el.style.stroke = color;
+}
+
+function setEl(id, val) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = val;
+}
+
+function flash(el) {
+  el.classList.remove('flash');
+  void el.offsetWidth;
+  el.classList.add('flash');
+}
+
+function pulse() {
+  const sp = document.getElementById('spinner');
+  sp.classList.add('go');
+  clearTimeout(sp._t);
+  sp._t = setTimeout(()=>sp.classList.remove('go'), 600);
+}
+
+function switchView(name, btn) {
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(b=>b.classList.remove('active'));
+  document.getElementById(`view-${name}`).classList.add('active');
+  btn.classList.add('active');
+}
+
+/* ─────────────────────────────────────────
+   STARTUP
+───────────────────────────────────────── */
+document.addEventListener('DOMContentLoaded', () => {
+  initChart();
+  const c = loadCfg();
+  if (c && c.apiKey && c.dbUrl) {
+    setTimeout(()=>bootFirebase(c), 500);
+  } else {
+    setConn('offline','ยังไม่ได้ตั้งค่า');
+    setTimeout(openCfg, 700);
+  }
+
+  // ESP32 local fallback polling (when Firebase not configured)
+  setInterval(async () => {
+    if (!db && S.espIp) {
+      try {
+        const res = await fetch(`http://${S.espIp}/api/data`);
+        const d = await res.json();
+        onSensorData({ temperature:d.temp, humidity:d.hum, ldr:d.ldr });
+        updateRelayUI(1, d.relay1);
+        updateRelayUI(2, d.relay2);
+        setConn('online','Local WiFi');
+      } catch {}
+    }
+  }, 4000);
+});
+</script>
+</body>
+</html>
